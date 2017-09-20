@@ -46,12 +46,12 @@ sudo mkdir -p /etc/ckan/default
 sudo chown -R `whoami` /etc/ckan/
 sudo chown -R `whoami` ~/ckan/etc
 /usr/lib/ckan/default/bin/paster make-config ckan /etc/ckan/default/production.ini
-sed -i s/ckan_default:pass/ckan_default:ckan_default/g /etc/ckan/default/production.ini
-sudo bash -c "echo solr_url=http://127.0.0.1:8983/solr >> /etc/ckan/default/production.ini"
-sed -i.back s/'ckan.site_url ='/'ckan.site_url = http:\/\/demo.ckan.com'/g /etc/ckan/default/production.ini
+sed -i.bak s/ckan_default:pass/ckan_default:ckan_default/g /etc/ckan/default/production.ini
+sed -i.bak s/'ckan.site_url ='/'ckan.site_url = http:\/\/demo.ckan.com'/g /etc/ckan/default/production.ini
+sed -i.bak 's/#solr_url/solr_url/g' /etc/ckan/default/production.ini
 
 print_ "* Setup Solr"
-sudo sed -i s/NO_START=1/NO_START=0/g /etc/default/jetty
+sudo sed -i.bak s/NO_START=1/NO_START=0/g /etc/default/jetty
 sudo bash -c "echo JETTY_HOST=0.0.0.0 >> /etc/default/jetty"
 sudo bash -c "echo JETTY_PORT=8983 >> /etc/default/jetty"
 # sudo bash -c "echo JAVA_HOME=/usr/lib/jvm/java-7-openjdk-amd64/ >> /etc/default/jetty"
@@ -74,6 +74,20 @@ print_ "* Creating database tables"
 pushd /usr/lib/ckan/default/src/ckan
 /usr/lib/ckan/default/bin/paster db init -c /etc/ckan/default/production.ini > /dev/null 2>&1 || die "Failed to initialize database"
 popd
+
+print_ "* Setting up DataStore"
+sed -i.bak s/'ckan\.plugins =.*$/& datastore/g' /etc/ckan/default/production.ini
+sudo -u postgres bash -c "psql -c \"CREATE USER datastore_default WITH PASSWORD 'datastore_default';\"" > /dev/null 2>&1 || die "Failed to create database user"
+sudo -u postgres createdb -O ckan_default datastore_default -E utf-8
+sed -i.bak 's/#ckan\.datastore\.write_url/ckan\.datastore\.write_url/g' /etc/ckan/default/production.ini
+sed -i.bak 's/#ckan\.datastore\.read_url/ckan\.datastore\.read_url/g' /etc/ckan/default/production.ini
+sed -i.bak s/datastore_default:pass/datastore_default:datastore_default/g /etc/ckan/default/production.ini
+sed -i.bak 's/#ckan\.storage_path = .*$/&\/default/g' /etc/ckan/default/production.ini
+sed -i.bak 's/#ckan\.storage_path/ckan\.storage_path/g' /etc/ckan/default/production.ini
+sudo mkdir /var/lib/ckan
+sudo chmod 777 -R /var/lib/ckan
+/usr/lib/ckan/default/bin/paster --plugin=ckan datastore set-permissions --config=/etc/ckan/default/production.ini | sudo -u postgres psql --set ON_ERROR_STOP=1
+
 
 # print_ "* Starting CKAN"
 # pushd /usr/lib/ckan/default/src/ckan
